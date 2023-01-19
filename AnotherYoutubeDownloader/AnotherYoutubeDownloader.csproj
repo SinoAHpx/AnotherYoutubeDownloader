@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Manganese" Version="1.2.9" />
       <PackageReference Include="Spectre.Console" Version="0.46.0" />
       <PackageReference Include="YoutubeExplode" Version="6.2.5" />
       <PackageReference Include="YoutubeExplode.Converter" Version="6.2.5" />
