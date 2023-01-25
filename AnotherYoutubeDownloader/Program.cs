@@ -6,33 +6,102 @@ using YoutubeExplode;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
 
+#region Greeting
+
 AnsiConsole.Write(new FigletText("AYD"));
 AnsiConsole.MarkupLine($"[red]Version {Assembly.GetExecutingAssembly().GetName().Version} by AHpx[/]");
 AnsiConsole.MarkupLine($"GitHub: https://github.com/SinoAHpx/AnotherYoutubeDownloader");
 
+#endregion
+
+#region Initializing
+
 var ytClient = new YoutubeClient();
-//https://www.youtube.com/watch?v=ANIX12gCtyM
+
+
+#endregion
+
+#region Loop body
+
 while (true)
+{
+    var url = AskUrl();
+
+    if (url.Contains("list="))
+        await DownloadVideoAsync(url);
+    else
+        await DownloadPlaylistAsync(url);
+    
+    AnsiConsole.MarkupLine("Download completed");
+}
+
+#endregion
+
+#region Interactions
+
+string AskUrl()
 {
     var url = AnsiConsole.Ask<string>("Input a url or video or playlist:");
     
     if (!Uri.IsWellFormedUriString(url, UriKind.Absolute) || !url.Contains("youtube.com"))
     {
         AnsiConsole.MarkupLine("[red]Invalid url, please input again[/]");
-        return ;
+        return AskUrl();
     }
 
-    var videoMetadata = await ytClient.Videos.GetAsync(url);
-    AnsiConsole.MarkupLine($"Title: [red]{videoMetadata.Title}[/]");
-    AnsiConsole.MarkupLine($"Author: [red]{videoMetadata.Author.ChannelTitle}[/]");
+    return url;
+}
 
+string AskOutputDirectory()
+{
+    const string configPath = "./ayd.json";
+    if (File.Exists(configPath))
+    {
+        var defaultLocation = File.ReadAllText(configPath).Fetch("DefaultLocation");
+        if (!defaultLocation.IsNullOrEmpty())
+            return defaultLocation;
+
+    }
+    
     var rawLocation = AnsiConsole.Confirm("Download to default location[yellow](./ayd)[/]? ")
         ? "./ayd"
         : AnsiConsole.Ask<string>("Where do you want?");
 
-    if (rawLocation.IsNullOrEmpty())
-        return;
+    if (AnsiConsole.Confirm("Keep that location as default? "))
+    {
+        File.WriteAllText("./ayd.json", new
+        {
+            DefaultLocation = rawLocation
+        }.ToJsonString());
 
+        AnsiConsole.MarkupLine("New default location saved, you can delete file [yellow]./ayd.json[/] to modify it.");
+    }
+    
+    if (rawLocation.IsNullOrEmpty())
+        return AskOutputDirectory();
+
+    return rawLocation;
+}
+
+#endregion
+
+#region Video
+
+async Task<IVideo> RetrieveVideoAsync(string url)
+{
+    var videoMetadata = await ytClient!.Videos.GetAsync(url);
+    AnsiConsole.MarkupLine($"Title: [red]{videoMetadata.Title}[/]");
+    AnsiConsole.MarkupLine($"Author: [red]{videoMetadata.Author.ChannelTitle}[/]");
+
+    return videoMetadata;
+}
+
+async Task DownloadVideoAsync(string url)
+{
+    var videoMetadata = await RetrieveVideoAsync(url);
+    
+    var rawLocation = AskOutputDirectory();
+    
     var downloadDirectory = Directory.CreateDirectory(rawLocation);
     var downloadLocation = GetExactLocation(videoMetadata, downloadDirectory);
 
@@ -65,23 +134,29 @@ while (true)
                 await ytClient.Videos.Streams.DownloadAsync(stream, downloadLocation.FullName, progress);
             });
         });
-    
-
-    AnsiConsole.MarkupLine("Download completed");
 }
 
-FileInfo GetExactLocation(Video videoMetadata, DirectoryInfo downloadDirectory)
+#endregion
+
+
+#region Playlist
+
+async Task DownloadPlaylistAsync(string url)
+{
+    //todo: make it selectable for videos in a playlist to download
+}
+
+#endregion
+
+
+#region Helpers
+
+FileInfo GetExactLocation(IVideo videoMetadata, DirectoryInfo downloadDirectory)
 {
     var fileName = $"{videoMetadata?.Author.ChannelTitle} - {videoMetadata?.Title}.mp4";
-    var filePath = Path.Combine(downloadDirectory!.FullName, fileName);
+    var filePath = Path.Combine(downloadDirectory.FullName.RemoveInvalidPathChars(),
+        fileName.RemoveInvalidFileNameChars());
     return new FileInfo(filePath);
-} 
-
-public static class Extensions
-{
-    public static T Print<T>(this T t)
-    {
-        Console.WriteLine(t);
-        return t;
-    }
 }
+
+#endregion
