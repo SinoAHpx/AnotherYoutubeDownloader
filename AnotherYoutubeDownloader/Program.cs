@@ -306,7 +306,8 @@ bool IsFFsExist(string folder)
     var executableExtension = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
         ? ".exe"
         : string.Empty;
-    return File.Exists($"{folder}/ffmpeg{executableExtension}") && File.Exists($"{folder}/ffprobe");
+    return File.Exists($"{folder}/ffmpeg{executableExtension}") &&
+           File.Exists($"{folder}/ffprobe{executableExtension}");
 }
 
 static string GetOS()
