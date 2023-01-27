@@ -42,10 +42,8 @@ while (true)
             ? await DownloadPlaylistAsync(url)
             : await DownloadVideoAsync(url);
 
-        if (AnsiConsole.Confirm("Download completed, open directory?"))
-        {
-            Process.Start(new ProcessStartInfo { FileName = downloadedLocation, UseShellExecute = true });
-        }
+        AnsiConsole.MarkupLine($"Download completed in [red]{downloadedLocation.EscapeMarkup()}[/]");
+        Process.Start(new ProcessStartInfo(downloadedLocation) { UseShellExecute = true });
     }
     catch (Exception e)
     {
@@ -83,7 +81,7 @@ async Task<string> AskFFBinariesAsync()
         {
             var branches = await new HttpClient().GetStringAsync("https://ffbinaries.com/api/v1/version/latest");
             //we don't support arm yet, neither do 32 bit Windows
-            var currentSystem = GetOS();
+            var currentSystem = GetOs();
 
             await Policy.Handle<Exception>()
                 .RetryAsync(3,
@@ -99,7 +97,7 @@ async Task<string> AskFFBinariesAsync()
                         var task1 = ctx.AddTask("FFmpeg", maxValue: 1);
                         var task2 = ctx.AddTask("FFprobe", maxValue: 1);
 
-                        await Parallel.ForEachAsync(new[] { task1, task2 }, async (task, token) =>
+                        await Parallel.ForEachAsync(new[] { task1, task2 }, async (task, _) =>
                         {
                             var url = branches.Fetch($"bin.{currentSystem}.{task.Description.ToLower()}")!;
                             var file = await DownloadFFsAsync(url, task);
@@ -254,6 +252,8 @@ async Task<string> DownloadPlaylistAsync(string url)
     var rawLocation = AskOutputDirectory();
 
     var playlistMeta = await RetrievePlaylistAsync(url);
+    var location = Path.Combine(rawLocation, playlistMeta.Title.RemoveInvalidFileNameChars());
+    Directory.CreateDirectory(location);
 
     var rawPlaylist = await ytClient.Playlists.GetVideosAsync(playlistMeta.Id);
     var selectedVideos = AnsiConsole.Prompt(new MultiSelectionPrompt<string>()
@@ -263,7 +263,6 @@ async Task<string> DownloadPlaylistAsync(string url)
 
     var videos = rawPlaylist.Where(v => selectedVideos.Contains(v.Title)).ToList();
 
-    var migratingQueue = new Queue<string>();
     await Policy.Handle<Exception>().RetryAsync(3).ExecuteAsync(async () =>
     {
         await AnsiConsole.Progress().StartAsync(async ctx =>
@@ -275,8 +274,7 @@ async Task<string> DownloadPlaylistAsync(string url)
                 var (progressTask, playlistVideo) = tuple;
                 var manifest = await ytClient.Videos.Streams.GetManifestAsync(playlistVideo.Id, _);
                 var stream = manifest.GetMuxedStreams().GetWithHighestVideoQuality();
-                var videoFile = GetExactLocation(playlistVideo, rawLocation);
-                migratingQueue.Enqueue(videoFile.FullName);
+                var videoFile = GetExactLocation(playlistVideo, location);
 
                 if (videoFile.Exists)
                 {
@@ -290,11 +288,12 @@ async Task<string> DownloadPlaylistAsync(string url)
         });
     });
 
-
+    var migratingQueue = videos.Select(v => GetExactLocation(v, location)).Select(x => x.FullName).ToList();
     AnsiConsole.MarkupLine($"Migrating {migratingQueue.Count} videos");
-    FFMpeg.Join(Path.Combine(rawLocation, $"{playlistMeta.Title}.mp4"), migratingQueue.ToArray());
+    AnsiConsole.MarkupLine($"{migratingQueue.Select(x => x.GetFileName()).Aggregate((a, b) => $"{a}{Environment.NewLine}{b}")}");
+    FFMpeg.Join(Path.Combine(location, $"{playlistMeta.Title.RemoveInvalidFileNameChars()} (Migrated).mp4"), migratingQueue.ToArray());
 
-    return rawLocation;
+    return location;
 }
 
 #endregion
@@ -310,9 +309,9 @@ bool IsFFsExist(string folder)
            File.Exists($"{folder}/ffprobe{executableExtension}");
 }
 
-static string GetOS()
+static string GetOs()
 {
-    string os = null;
+    string? os = null;
     if(RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         os = "windows";
 
