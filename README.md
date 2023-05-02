@@ -5,6 +5,7 @@ Just another tool for downloading YouTube videos. Nothing really special, except
 - Based on .NET 6
 - Cross-platform
 - No GUI but CUI is cool
+- Retry when something goes to wrong
 
 Thanks to [YouTubeExplode](https://github.com/Tyrrrz/YoutubeExplode) and [Spectre.Console](https://github.com/spectreconsole/spectre.console), and all other libraries.
 
